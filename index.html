@@ -1,672 +1,693 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Play, Plus, Check, X, Trophy, Home, BookOpen, 
-  BrainCircuit, ArrowRight, Save, Trash2, Users, 
-  ChevronRight, AlertCircle, Library, Loader2
-} from 'lucide-react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, doc } from 'firebase/firestore';
-
-// Firebase Setup
-const firebaseConfig = {
-  apiKey: "AIzaSyChTG7tFp7xEuCzYb3D4KmeQD0ntXLNmjk",
-  authDomain: "freequizz-4789e.firebaseapp.com",
-  projectId: "freequizz-4789e",
-  storageBucket: "freequizz-4789e.firebasestorage.app",
-  messagingSenderId: "690748477001",
-  appId: "1:690748477001:web:ae0a6754c2d23521843998",
-  measurementId: "G-1B6BG6BNDX"
-};
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-const OPTION_COLORS = [
-  'bg-rose-500 hover:bg-rose-600', 
-  'bg-blue-500 hover:bg-blue-600', 
-  'bg-amber-500 hover:bg-amber-600', 
-  'bg-emerald-500 hover:bg-emerald-600'
-];
-
-export default function App() {
-  const [quizzes, setQuizzes] = useState([]);
-  const [view, setView] = useState('home'); // home, create, library, play, results
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState('');
-
-  // Firebase Auth & Data Sync
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        // We bypass the platform token and go straight to anonymous 
-        // because you are using a custom Firebase config.
-        await signInAnonymously(auth);
-      } catch (error) {
-        console.error("Auth error:", error);
-        if (error.code === 'auth/admin-restricted-operation' || error.code === 'auth/operation-not-allowed') {
-          setAuthError("You need to enable 'Anonymous' sign-in in your Firebase Console.");
-        } else {
-          setAuthError(`Authentication Failed: ${error.message}`);
-        }
-        setLoading(false); 
-      }
-    };
-    initAuth();
-    
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (!currentUser) {
-        setLoading(false);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    const quizzesRef = collection(db, 'artifacts', appId, 'public', 'data', 'quizzes');
-    const unsubscribe = onSnapshot(quizzesRef, (snapshot) => {
-      const fetchedQuizzes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setQuizzes(fetchedQuizzes);
-      setLoading(false);
-    }, (error) => {
-      console.error("Firestore error:", error);
-      if (error.code === 'permission-denied') {
-        setAuthError("Firestore Action Required: Please update your Firestore Security Rules to allow read/write access.");
-      }
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [user]);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FreeQuizz Assessment App</title>
   
-  // Join Game State
-  const [joinCode, setJoinCode] = useState('');
-  const [joinError, setJoinError] = useState('');
-
-  // Active Play State
-  const [activeQuiz, setActiveQuiz] = useState(null);
-  const [playState, setPlayState] = useState({
-    currentIndex: 0,
-    score: 0,
-    isAnswering: false,
-    selectedOption: null
-  });
-
-  // Create Quiz State
-  const [newQuizTitle, setNewQuizTitle] = useState('');
-  const [newQuestions, setNewQuestions] = useState([]);
-  const [draftQuestion, setDraftQuestion] = useState({
-    q: '',
-    options: ['', '', '', ''],
-    correctIndex: 0
-  });
-  const [createError, setCreateError] = useState('');
-
-  // --- HANDLERS ---
-
-  const handleJoinGame = (e) => {
-    e.preventDefault();
-    setJoinError('');
-    if (!joinCode.trim()) return;
-
-    const quiz = quizzes.find(q => q.code === joinCode.trim());
-    if (quiz) {
-      startQuiz(quiz);
-    } else {
-      setJoinError('No assessment found with that code.');
-    }
-  };
-
-  const startQuiz = (quiz) => {
-    setActiveQuiz(quiz);
-    setPlayState({
-      currentIndex: 0,
-      score: 0,
-      isAnswering: false,
-      selectedOption: null
-    });
-    setView('play');
-  };
-
-  const handleOptionClick = (index) => {
-    if (playState.isAnswering) return;
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Babel for in-browser JSX compilation -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <style>
+    /* Custom animations for standalone Tailwind */
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes zoomIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+    @keyframes slideInBottom { from { opacity: 0; transform: translateY(1rem); } to { opacity: 1; transform: translateY(0); } }
     
-    const isCorrect = index === activeQuiz.questions[playState.currentIndex].correctIndex;
-    
-    setPlayState(prev => ({
-      ...prev,
-      isAnswering: true,
-      selectedOption: index,
-      score: isCorrect ? prev.score + 100 : prev.score
-    }));
+    .animate-in { animation-duration: 0.5s; animation-timing-function: ease-out; animation-fill-mode: forwards; }
+    .fade-in { animation-name: fadeIn; }
+    .zoom-in-95 { animation-name: zoomIn; }
+    .slide-in-from-bottom-4 { animation-name: slideInBottom; }
+  </style>
+</head>
+<body class="bg-slate-50 font-sans selection:bg-indigo-200 text-slate-900">
+  <div id="root"></div>
 
-    // Wait 2 seconds, then advance
-    setTimeout(() => {
-      if (playState.currentIndex + 1 < activeQuiz.questions.length) {
-        setPlayState(prev => ({
-          ...prev,
-          currentIndex: prev.currentIndex + 1,
+  <!-- Using Babel to compile our React JSX directly in the browser -->
+  <script type="text/babel" data-type="module">
+    import React, { useState, useEffect } from 'https://esm.sh/react@18.2.0';
+    import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
+    import { 
+      Play, Plus, Check, X, Trophy, Home, BookOpen, 
+      BrainCircuit, ArrowRight, Save, Trash2, Users, 
+      ChevronRight, AlertCircle, Library, Loader2
+    } from 'https://esm.sh/lucide-react@0.292.0';
+    
+    // Use official Google Firebase CDNs instead of esm.sh to prevent module registration errors
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.6.0/firebase-app.js';
+    import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.6.0/firebase-auth.js';
+    import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, doc } from 'https://www.gstatic.com/firebasejs/10.6.0/firebase-firestore.js';
+
+    // Firebase Setup
+    const firebaseConfig = {
+      apiKey: "AIzaSyChTG7tFp7xEuCzYb3D4KmeQD0ntXLNmjk",
+      authDomain: "freequizz-4789e.firebaseapp.com",
+      projectId: "freequizz-4789e",
+      storageBucket: "freequizz-4789e.firebasestorage.app",
+      messagingSenderId: "690748477001",
+      appId: "1:690748477001:web:ae0a6754c2d23521843998",
+      measurementId: "G-1B6BG6BNDX"
+    };
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    
+    // Check if running in a custom environment or default to a standalone ID
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'freequizz-standalone';
+
+    const OPTION_COLORS = [
+      'bg-rose-500 hover:bg-rose-600', 
+      'bg-blue-500 hover:bg-blue-600', 
+      'bg-amber-500 hover:bg-amber-600', 
+      'bg-emerald-500 hover:bg-emerald-600'
+    ];
+
+    function App() {
+      const [quizzes, setQuizzes] = useState([]);
+      const [view, setView] = useState('home'); // home, create, library, play, results
+      const [user, setUser] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [authError, setAuthError] = useState('');
+
+      // Firebase Auth & Data Sync
+      useEffect(() => {
+        const initAuth = async () => {
+          try {
+            await signInAnonymously(auth);
+          } catch (error) {
+            console.error("Auth error:", error);
+            if (error.code === 'auth/admin-restricted-operation' || error.code === 'auth/operation-not-allowed') {
+              setAuthError("You need to enable 'Anonymous' sign-in in your Firebase Console.");
+            } else {
+              setAuthError(`Authentication Failed: ${error.message}`);
+            }
+            setLoading(false); 
+          }
+        };
+        initAuth();
+        
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+          setUser(currentUser);
+          if (!currentUser) {
+            setLoading(false);
+          }
+        });
+        return () => unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        if (!user) return;
+        const quizzesRef = collection(db, 'artifacts', appId, 'public', 'data', 'quizzes');
+        const unsubscribe = onSnapshot(quizzesRef, (snapshot) => {
+          const fetchedQuizzes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setQuizzes(fetchedQuizzes);
+          setLoading(false);
+        }, (error) => {
+          console.error("Firestore error:", error);
+          if (error.code === 'permission-denied') {
+            setAuthError("Firestore Action Required: Please update your Firestore Security Rules to allow read/write access.");
+          }
+          setLoading(false);
+        });
+        return () => unsubscribe();
+      }, [user]);
+      
+      // Join Game State
+      const [joinCode, setJoinCode] = useState('');
+      const [joinError, setJoinError] = useState('');
+
+      // Active Play State
+      const [activeQuiz, setActiveQuiz] = useState(null);
+      const [playState, setPlayState] = useState({
+        currentIndex: 0,
+        score: 0,
+        isAnswering: false,
+        selectedOption: null
+      });
+
+      // Create Quiz State
+      const [newQuizTitle, setNewQuizTitle] = useState('');
+      const [newQuestions, setNewQuestions] = useState([]);
+      const [draftQuestion, setDraftQuestion] = useState({
+        q: '',
+        options: ['', '', '', ''],
+        correctIndex: 0
+      });
+      const [createError, setCreateError] = useState('');
+
+      // --- HANDLERS ---
+      const handleJoinGame = (e) => {
+        e.preventDefault();
+        setJoinError('');
+        if (!joinCode.trim()) return;
+
+        const quiz = quizzes.find(q => q.code === joinCode.trim());
+        if (quiz) {
+          startQuiz(quiz);
+        } else {
+          setJoinError('No assessment found with that code.');
+        }
+      };
+
+      const startQuiz = (quiz) => {
+        setActiveQuiz(quiz);
+        setPlayState({
+          currentIndex: 0,
+          score: 0,
           isAnswering: false,
           selectedOption: null
+        });
+        setView('play');
+      };
+
+      const handleOptionClick = (index) => {
+        if (playState.isAnswering) return;
+        
+        const isCorrect = index === activeQuiz.questions[playState.currentIndex].correctIndex;
+        
+        setPlayState(prev => ({
+          ...prev,
+          isAnswering: true,
+          selectedOption: index,
+          score: isCorrect ? prev.score + 100 : prev.score
         }));
-      } else {
-        setView('results');
-      }
-    }, 2000);
-  };
 
-  const handleAddDraftQuestion = () => {
-    setCreateError('');
-    if (!draftQuestion.q.trim()) return setCreateError("Question text is required.");
-    const validOptions = draftQuestion.options.filter(o => o.trim() !== '');
-    if (validOptions.length < 2) return setCreateError("Please provide at least 2 options.");
+        setTimeout(() => {
+          if (playState.currentIndex + 1 < activeQuiz.questions.length) {
+            setPlayState(prev => ({
+              ...prev,
+              currentIndex: prev.currentIndex + 1,
+              isAnswering: false,
+              selectedOption: null
+            }));
+          } else {
+            setView('results');
+          }
+        }, 2000);
+      };
 
-    setNewQuestions([...newQuestions, draftQuestion]);
-    setDraftQuestion({ q: '', options: ['', '', '', ''], correctIndex: 0 });
-  };
+      const handleAddDraftQuestion = () => {
+        setCreateError('');
+        if (!draftQuestion.q.trim()) return setCreateError("Question text is required.");
+        const validOptions = draftQuestion.options.filter(o => o.trim() !== '');
+        if (validOptions.length < 2) return setCreateError("Please provide at least 2 options.");
 
-  const handleSaveQuiz = async () => {
-    setCreateError('');
-    if (!newQuizTitle.trim()) return setCreateError("Quiz title is required.");
-    if (newQuestions.length === 0) return setCreateError("Add at least one question.");
-    if (!user) return setCreateError("You must be connected to save a quiz. Ensure Firebase Anonymous Auth is enabled.");
+        setNewQuestions([...newQuestions, draftQuestion]);
+        setDraftQuestion({ q: '', options: ['', '', '', ''], correctIndex: 0 });
+      };
 
-    const newQuiz = {
-      code: Math.floor(100000 + Math.random() * 900000).toString(),
-      title: newQuizTitle,
-      questions: newQuestions,
-      creatorId: user.uid,
-      createdAt: new Date().toISOString()
-    };
+      const handleSaveQuiz = async () => {
+        setCreateError('');
+        if (!newQuizTitle.trim()) return setCreateError("Quiz title is required.");
+        if (newQuestions.length === 0) return setCreateError("Add at least one question.");
+        if (!user) return setCreateError("You must be connected to save a quiz. Ensure Firebase Anonymous Auth is enabled.");
 
-    try {
-      const quizzesRef = collection(db, 'artifacts', appId, 'public', 'data', 'quizzes');
-      await addDoc(quizzesRef, newQuiz);
-      setNewQuizTitle('');
-      setNewQuestions([]);
-      setView('library');
-    } catch (error) {
-      console.error("Error saving:", error);
-      setCreateError("Failed to save assessment. Check Firestore rules.");
-    }
-  };
+        const newQuiz = {
+          code: Math.floor(100000 + Math.random() * 900000).toString(),
+          title: newQuizTitle,
+          questions: newQuestions,
+          creatorId: user.uid,
+          createdAt: new Date().toISOString()
+        };
 
-  const handleDeleteQuiz = async (quizId) => {
-    if (!user) return;
-    try {
-      const quizRef = doc(db, 'artifacts', appId, 'public', 'data', 'quizzes', quizId);
-      await deleteDoc(quizRef);
-    } catch (error) {
-      console.error("Error deleting:", error);
-    }
-  };
+        try {
+          const quizzesRef = collection(db, 'artifacts', appId, 'public', 'data', 'quizzes');
+          await addDoc(quizzesRef, newQuiz);
+          setNewQuizTitle('');
+          setNewQuestions([]);
+          setView('library');
+        } catch (error) {
+          console.error("Error saving:", error);
+          setCreateError("Failed to save assessment. Check Firestore rules.");
+        }
+      };
 
-  // --- RENDERERS ---
+      const handleDeleteQuiz = async (quizId) => {
+        if (!user) return;
+        try {
+          const quizRef = doc(db, 'artifacts', appId, 'public', 'data', 'quizzes', quizId);
+          await deleteDoc(quizRef);
+        } catch (error) {
+          console.error("Error deleting:", error);
+        }
+      };
 
-  const renderNavbar = () => (
-    <nav className="bg-white shadow-sm px-6 py-4 flex items-center justify-between sticky top-0 z-50">
-      <div 
-        className="flex items-center gap-2 cursor-pointer text-indigo-600 hover:text-indigo-800 transition-colors"
-        onClick={() => setView('home')}
-      >
-        <div className="bg-indigo-600 p-2 rounded-xl text-white">
-          <BrainCircuit size={24} />
-        </div>
-        <span className="text-2xl font-extrabold tracking-tight">FreeQuizz</span>
-      </div>
-      <div className="flex gap-4">
-        <button 
-          onClick={() => setView('library')}
-          className="text-slate-600 hover:text-indigo-600 font-semibold flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-indigo-50 transition-colors"
-        >
-          <Library size={20} /> Library
-        </button>
-      </div>
-    </nav>
-  );
-
-  const renderHome = () => (
-    <div className="animate-in fade-in duration-500">
-      {/* Hero Section */}
-      <div className="bg-gradient-to-br from-indigo-600 to-violet-700 text-white py-20 px-4 rounded-b-[3rem] shadow-2xl text-center relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none" 
-             style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '32px 32px' }}></div>
-        
-        <div className="relative z-10 max-w-2xl mx-auto">
-          <h1 className="text-5xl md:text-6xl font-extrabold mb-6 tracking-tight">
-            Learn and engage, <br/><span className="text-yellow-400">for free.</span>
-          </h1>
-          <p className="text-xl opacity-90 mb-10 font-medium">
-            The totally free alternative to expensive assessment tools. Create interactive quizzes, practice, and master any subject.
-          </p>
-          
-          <form onSubmit={handleJoinGame} className="max-w-md mx-auto relative">
-            <div className="bg-white/20 backdrop-blur-md p-2 rounded-2xl flex shadow-2xl border border-white/30">
-              <input 
-                className="flex-1 bg-white text-slate-900 px-6 py-4 rounded-xl outline-none text-xl font-bold uppercase tracking-widest placeholder:normal-case placeholder:tracking-normal placeholder:font-medium placeholder:text-slate-400" 
-                placeholder="Enter Join Code..." 
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value)}
-                maxLength={6}
-              />
-              <button 
-                type="submit"
-                className="ml-2 bg-yellow-400 hover:bg-yellow-300 text-slate-900 px-8 py-4 rounded-xl font-bold text-lg transition-transform active:scale-95 flex items-center gap-2 shadow-lg"
-              >
-                Join <ArrowRight size={20} />
-              </button>
-            </div>
-            {joinError && (
-              <div className="absolute -bottom-10 left-0 w-full text-red-200 flex items-center justify-center gap-2 font-semibold bg-red-900/50 py-1 rounded-lg backdrop-blur-sm">
-                <AlertCircle size={16} /> {joinError}
-              </div>
-            )}
-          </form>
-        </div>
-      </div>
-
-      {/* Teacher/Creator Section */}
-      <div className="max-w-5xl mx-auto mt-16 px-4 pb-20">
-        <h2 className="text-2xl font-bold text-slate-800 mb-8 flex items-center gap-2">
-          <Users className="text-indigo-600" /> For Teachers & Creators
-        </h2>
-        
-        <div className="grid md:grid-cols-2 gap-6">
+      // --- RENDERERS ---
+      const renderNavbar = () => (
+        <nav className="bg-white shadow-sm px-6 py-4 flex items-center justify-between sticky top-0 z-50">
           <div 
-            onClick={() => setView('create')}
-            className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group"
+            className="flex items-center gap-2 cursor-pointer text-indigo-600 hover:text-indigo-800 transition-colors"
+            onClick={() => setView('home')}
           >
-            <div className="bg-indigo-100 w-16 h-16 rounded-2xl flex items-center justify-center text-indigo-600 mb-6 group-hover:scale-110 transition-transform">
-              <Plus size={32} />
+            <div className="bg-indigo-600 p-2 rounded-xl text-white">
+              <BrainCircuit size={24} />
             </div>
-            <h3 className="text-2xl font-bold mb-2">Create Assessment</h3>
-            <p className="text-slate-500 mb-6">Build a new interactive quiz from scratch. Add questions, multiple choices, and set the correct answers easily.</p>
-            <div className="text-indigo-600 font-bold flex items-center gap-1 group-hover:gap-3 transition-all">
-              Start Building <ChevronRight size={20} />
-            </div>
+            <span className="text-2xl font-extrabold tracking-tight">FreeQuizz</span>
           </div>
-
-          <div 
-            onClick={() => setView('library')}
-            className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group"
-          >
-            <div className="bg-emerald-100 w-16 h-16 rounded-2xl flex items-center justify-center text-emerald-600 mb-6 group-hover:scale-110 transition-transform">
-              <BookOpen size={32} />
-            </div>
-            <h3 className="text-2xl font-bold mb-2">My Library</h3>
-            <p className="text-slate-500 mb-6">Access your previously created assessments. View join codes to share with your students or host a live game.</p>
-            <div className="text-emerald-600 font-bold flex items-center gap-1 group-hover:gap-3 transition-all">
-              View Resources <ChevronRight size={20} />
-            </div>
+          <div className="flex gap-4">
+            <button 
+              onClick={() => setView('library')}
+              className="text-slate-600 hover:text-indigo-600 font-semibold flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-indigo-50 transition-colors"
+            >
+              <Library size={20} /> Library
+            </button>
           </div>
-        </div>
-      </div>
-    </div>
-  );
+        </nav>
+      );
 
-  const renderLibrary = () => (
-    <div className="max-w-5xl mx-auto py-10 px-4 animate-in fade-in">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
-          <Library className="text-indigo-600" /> Assessment Library
-        </h1>
-        <button 
-          onClick={() => setView('create')}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-colors shadow-sm"
-        >
-          <Plus size={20} /> New Quiz
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="text-center py-20 flex flex-col items-center">
-          <Loader2 size={48} className="text-indigo-600 animate-spin mb-4" />
-          <p className="text-slate-500 font-medium">Loading library...</p>
-        </div>
-      ) : quizzes.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-3xl border border-slate-200 shadow-sm">
-          <BookOpen size={64} className="mx-auto text-slate-300 mb-4" />
-          <h2 className="text-2xl font-bold text-slate-700 mb-2">No quizzes yet</h2>
-          <p className="text-slate-500">Create your first assessment to get started.</p>
-        </div>
-      ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {quizzes.map(quiz => (
-            <div key={quiz.id} className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col">
-              <div className="bg-slate-100 p-6 flex justify-between items-start">
-                <div className="bg-white px-3 py-1 rounded-lg font-mono font-bold text-lg text-indigo-600 shadow-sm flex items-center gap-2">
-                  Code: <span className="tracking-widest">{quiz.code}</span>
-                </div>
-                <div className="bg-slate-200 text-slate-600 px-3 py-1 rounded-full text-sm font-bold">
-                  {quiz.questions?.length || 0} Qs
-                </div>
-              </div>
-              <div className="p-6 flex-1 flex flex-col">
-                <h3 className="text-xl font-bold text-slate-800 mb-4 flex-1">{quiz.title}</h3>
-                <div className="flex gap-2 mt-auto">
+      const renderHome = () => (
+        <div className="animate-in fade-in">
+          <div className="bg-gradient-to-br from-indigo-600 to-violet-700 text-white py-20 px-4 rounded-b-[3rem] shadow-2xl text-center relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none" 
+                 style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '32px 32px' }}></div>
+            
+            <div className="relative z-10 max-w-2xl mx-auto">
+              <h1 className="text-5xl md:text-6xl font-extrabold mb-6 tracking-tight">
+                Learn and engage, <br/><span className="text-yellow-400">for free.</span>
+              </h1>
+              <p className="text-xl opacity-90 mb-10 font-medium">
+                The totally free alternative to expensive assessment tools. Create interactive quizzes, practice, and master any subject.
+              </p>
+              
+              <form onSubmit={handleJoinGame} className="max-w-md mx-auto relative">
+                <div className="bg-white/20 backdrop-blur-md p-2 rounded-2xl flex shadow-2xl border border-white/30">
+                  <input 
+                    className="flex-1 bg-white text-slate-900 px-6 py-4 rounded-xl outline-none text-xl font-bold uppercase tracking-widest placeholder:normal-case placeholder:tracking-normal placeholder:font-medium placeholder:text-slate-400" 
+                    placeholder="Enter Join Code..." 
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value)}
+                    maxLength={6}
+                  />
                   <button 
-                    onClick={() => startQuiz(quiz)}
-                    className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                    type="submit"
+                    className="ml-2 bg-yellow-400 hover:bg-yellow-300 text-slate-900 px-8 py-4 rounded-xl font-bold text-lg transition-transform active:scale-95 flex items-center gap-2 shadow-lg"
                   >
-                    <Play size={18} /> Play
+                    Join <ArrowRight size={20} />
                   </button>
-                  {user && quiz.creatorId === user.uid && (
-                    <button 
-                      onClick={() => handleDeleteQuiz(quiz.id)}
-                      className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
-                      title="Delete Quiz"
-                    >
-                      <Trash2 size={20} />
-                    </button>
-                  )}
                 </div>
-              </div>
+                {joinError && (
+                  <div className="absolute -bottom-10 left-0 w-full text-red-200 flex items-center justify-center gap-2 font-semibold bg-red-900/50 py-1 rounded-lg backdrop-blur-sm">
+                    <AlertCircle size={16} /> {joinError}
+                  </div>
+                )}
+              </form>
             </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+          </div>
 
-  const renderCreate = () => (
-    <div className="max-w-4xl mx-auto py-10 px-4 animate-in slide-in-from-bottom-4">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-slate-800">Create Assessment</h1>
-        <div className="flex items-center gap-4">
-          {createError && <span className="text-red-500 font-bold bg-red-50 px-3 py-1 rounded-lg">{createError}</span>}
-          <button 
-            onClick={handleSaveQuiz}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors shadow-md active:scale-95"
-          >
-            <Save size={20} /> Save & Publish
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 mb-8">
-        <label className="block text-sm font-bold text-slate-500 uppercase mb-2">Assessment Title</label>
-        <input 
-          type="text" 
-          placeholder="e.g. Chapter 4: Photosynthesis" 
-          className="w-full text-2xl font-bold text-slate-800 border-b-2 border-slate-200 focus:border-indigo-600 outline-none pb-2 transition-colors"
-          value={newQuizTitle}
-          onChange={(e) => setNewQuizTitle(e.target.value)}
-        />
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-8">
-        {/* Editor Pane */}
-        <div className="md:col-span-2 space-y-6">
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 border-t-4 border-t-indigo-500">
-            <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <Plus size={24} className="text-indigo-500" /> Add New Question
+          <div className="max-w-5xl mx-auto mt-16 px-4 pb-20">
+            <h2 className="text-2xl font-bold text-slate-800 mb-8 flex items-center gap-2">
+              <Users className="text-indigo-600" /> For Teachers & Creators
             </h2>
             
-            <textarea 
-              placeholder="Type your question here..."
-              className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-medium text-lg outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[120px] mb-6"
-              value={draftQuestion.q}
-              onChange={(e) => setDraftQuestion({...draftQuestion, q: e.target.value})}
-            />
-
-            <div className="space-y-3 mb-6">
-              <label className="block text-sm font-bold text-slate-500 uppercase">Answer Options (Select Correct)</label>
-              {draftQuestion.options.map((opt, idx) => (
-                <div key={idx} className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${draftQuestion.correctIndex === idx ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white focus-within:border-indigo-300'}`}>
-                  <button
-                    onClick={() => setDraftQuestion({...draftQuestion, correctIndex: idx})}
-                    className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${draftQuestion.correctIndex === idx ? 'bg-emerald-500 text-white' : 'bg-slate-200 hover:bg-slate-300'}`}
-                  >
-                    {draftQuestion.correctIndex === idx && <Check size={14} strokeWidth={4} />}
-                  </button>
-                  <input 
-                    type="text"
-                    placeholder={`Option ${idx + 1}`}
-                    className="flex-1 bg-transparent outline-none font-medium text-slate-800"
-                    value={opt}
-                    onChange={(e) => {
-                      const newOpts = [...draftQuestion.options];
-                      newOpts[idx] = e.target.value;
-                      setDraftQuestion({...draftQuestion, options: newOpts});
-                    }}
-                  />
+            <div className="grid md:grid-cols-2 gap-6">
+              <div 
+                onClick={() => setView('create')}
+                className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group"
+              >
+                <div className="bg-indigo-100 w-16 h-16 rounded-2xl flex items-center justify-center text-indigo-600 mb-6 group-hover:scale-110 transition-transform">
+                  <Plus size={32} />
                 </div>
-              ))}
-              <p className="text-xs text-slate-400 mt-2">Leave options empty if you only want 2 or 3 choices.</p>
-            </div>
+                <h3 className="text-2xl font-bold mb-2">Create Assessment</h3>
+                <p className="text-slate-500 mb-6">Build a new interactive quiz from scratch. Add questions, multiple choices, and set the correct answers easily.</p>
+                <div className="text-indigo-600 font-bold flex items-center gap-1 group-hover:gap-3 transition-all">
+                  Start Building <ChevronRight size={20} />
+                </div>
+              </div>
 
-            <button 
-              onClick={handleAddDraftQuestion}
-              className="w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 py-4 rounded-xl font-bold transition-colors flex justify-center items-center gap-2 border border-indigo-200"
-            >
-              <Plus size={20} /> Add Question to Assessment
-            </button>
+              <div 
+                onClick={() => setView('library')}
+                className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group"
+              >
+                <div className="bg-emerald-100 w-16 h-16 rounded-2xl flex items-center justify-center text-emerald-600 mb-6 group-hover:scale-110 transition-transform">
+                  <BookOpen size={32} />
+                </div>
+                <h3 className="text-2xl font-bold mb-2">My Library</h3>
+                <p className="text-slate-500 mb-6">Access your previously created assessments. View join codes to share with your students or host a live game.</p>
+                <div className="text-emerald-600 font-bold flex items-center gap-1 group-hover:gap-3 transition-all">
+                  View Resources <ChevronRight size={20} />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
+      );
 
-        {/* Preview / Question List Pane */}
-        <div className="md:col-span-1">
-          <div className="bg-slate-100 p-6 rounded-3xl border border-slate-200 sticky top-24 min-h-[300px]">
-            <h3 className="font-bold text-slate-700 mb-4 flex justify-between items-center">
-              Questions Added
-              <span className="bg-indigo-600 text-white px-2 py-0.5 rounded-full text-sm">{newQuestions.length}</span>
-            </h3>
-            
-            {newQuestions.length === 0 ? (
-              <div className="text-center py-10 text-slate-400 font-medium">
-                No questions added yet.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {newQuestions.map((q, i) => (
-                  <div key={i} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 group relative">
-                    <button 
-                      onClick={() => setNewQuestions(newQuestions.filter((_, idx) => idx !== i))}
-                      className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white"
-                    >
-                      <X size={14} />
-                    </button>
-                    <p className="text-sm font-bold text-slate-800 line-clamp-2 mb-2">{i+1}. {q.q}</p>
-                    <div className="flex gap-1">
-                      {q.options.filter(o => o.trim() !== '').map((_, idx) => (
-                        <div key={idx} className={`h-2 flex-1 rounded-full ${idx === q.correctIndex ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-                      ))}
+      const renderLibrary = () => (
+        <div className="max-w-5xl mx-auto py-10 px-4 animate-in fade-in">
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-3xl font-bold text-slate-800 flex items-center gap-3">
+              <Library className="text-indigo-600" /> Assessment Library
+            </h1>
+            <button 
+              onClick={() => setView('create')}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-colors shadow-sm"
+            >
+              <Plus size={20} /> New Quiz
+            </button>
+          </div>
+
+          {loading ? (
+            <div className="text-center py-20 flex flex-col items-center">
+              <Loader2 size={48} className="text-indigo-600 animate-spin mb-4" />
+              <p className="text-slate-500 font-medium">Loading library...</p>
+            </div>
+          ) : quizzes.length === 0 ? (
+            <div className="text-center py-20 bg-white rounded-3xl border border-slate-200 shadow-sm">
+              <BookOpen size={64} className="mx-auto text-slate-300 mb-4" />
+              <h2 className="text-2xl font-bold text-slate-700 mb-2">No quizzes yet</h2>
+              <p className="text-slate-500">Create your first assessment to get started.</p>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {quizzes.map(quiz => (
+                <div key={quiz.id} className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col">
+                  <div className="bg-slate-100 p-6 flex justify-between items-start">
+                    <div className="bg-white px-3 py-1 rounded-lg font-mono font-bold text-lg text-indigo-600 shadow-sm flex items-center gap-2">
+                      Code: <span className="tracking-widest">{quiz.code}</span>
+                    </div>
+                    <div className="bg-slate-200 text-slate-600 px-3 py-1 rounded-full text-sm font-bold">
+                      {quiz.questions?.length || 0} Qs
                     </div>
                   </div>
-                ))}
+                  <div className="p-6 flex-1 flex flex-col">
+                    <h3 className="text-xl font-bold text-slate-800 mb-4 flex-1">{quiz.title}</h3>
+                    <div className="flex gap-2 mt-auto">
+                      <button 
+                        onClick={() => startQuiz(quiz)}
+                        className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                      >
+                        <Play size={18} /> Play
+                      </button>
+                      {user && quiz.creatorId === user.uid && (
+                        <button 
+                          onClick={() => handleDeleteQuiz(quiz.id)}
+                          className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                          title="Delete Quiz"
+                        >
+                          <Trash2 size={20} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+
+      const renderCreate = () => (
+        <div className="max-w-4xl mx-auto py-10 px-4 animate-in slide-in-from-bottom-4">
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-3xl font-bold text-slate-800">Create Assessment</h1>
+            <div className="flex items-center gap-4">
+              {createError && <span className="text-red-500 font-bold bg-red-50 px-3 py-1 rounded-lg">{createError}</span>}
+              <button 
+                onClick={handleSaveQuiz}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors shadow-md active:scale-95"
+              >
+                <Save size={20} /> Save & Publish
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 mb-8">
+            <label className="block text-sm font-bold text-slate-500 uppercase mb-2">Assessment Title</label>
+            <input 
+              type="text" 
+              placeholder="e.g. Chapter 4: Photosynthesis" 
+              className="w-full text-2xl font-bold text-slate-800 border-b-2 border-slate-200 focus:border-indigo-600 outline-none pb-2 transition-colors"
+              value={newQuizTitle}
+              onChange={(e) => setNewQuizTitle(e.target.value)}
+            />
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="md:col-span-2 space-y-6">
+              <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 border-t-4 border-t-indigo-500">
+                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <Plus size={24} className="text-indigo-500" /> Add New Question
+                </h2>
+                
+                <textarea 
+                  placeholder="Type your question here..."
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-medium text-lg outline-none focus:ring-2 focus:ring-indigo-500 resize-none min-h-[120px] mb-6"
+                  value={draftQuestion.q}
+                  onChange={(e) => setDraftQuestion({...draftQuestion, q: e.target.value})}
+                />
+
+                <div className="space-y-3 mb-6">
+                  <label className="block text-sm font-bold text-slate-500 uppercase">Answer Options (Select Correct)</label>
+                  {draftQuestion.options.map((opt, idx) => (
+                    <div key={idx} className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${draftQuestion.correctIndex === idx ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-white focus-within:border-indigo-300'}`}>
+                      <button
+                        onClick={() => setDraftQuestion({...draftQuestion, correctIndex: idx})}
+                        className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${draftQuestion.correctIndex === idx ? 'bg-emerald-500 text-white' : 'bg-slate-200 hover:bg-slate-300'}`}
+                      >
+                        {draftQuestion.correctIndex === idx && <Check size={14} strokeWidth={4} />}
+                      </button>
+                      <input 
+                        type="text"
+                        placeholder={`Option ${idx + 1}`}
+                        className="flex-1 bg-transparent outline-none font-medium text-slate-800"
+                        value={opt}
+                        onChange={(e) => {
+                          const newOpts = [...draftQuestion.options];
+                          newOpts[idx] = e.target.value;
+                          setDraftQuestion({...draftQuestion, options: newOpts});
+                        }}
+                      />
+                    </div>
+                  ))}
+                  <p className="text-xs text-slate-400 mt-2">Leave options empty if you only want 2 or 3 choices.</p>
+                </div>
+
+                <button 
+                  onClick={handleAddDraftQuestion}
+                  className="w-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100 py-4 rounded-xl font-bold transition-colors flex justify-center items-center gap-2 border border-indigo-200"
+                >
+                  <Plus size={20} /> Add Question to Assessment
+                </button>
+              </div>
+            </div>
+
+            <div className="md:col-span-1">
+              <div className="bg-slate-100 p-6 rounded-3xl border border-slate-200 sticky top-24 min-h-[300px]">
+                <h3 className="font-bold text-slate-700 mb-4 flex justify-between items-center">
+                  Questions Added
+                  <span className="bg-indigo-600 text-white px-2 py-0.5 rounded-full text-sm">{newQuestions.length}</span>
+                </h3>
+                
+                {newQuestions.length === 0 ? (
+                  <div className="text-center py-10 text-slate-400 font-medium">
+                    No questions added yet.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {newQuestions.map((q, i) => (
+                      <div key={i} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 group relative">
+                        <button 
+                          onClick={() => setNewQuestions(newQuestions.filter((_, idx) => idx !== i))}
+                          className="absolute -top-2 -right-2 bg-red-100 text-red-600 p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white"
+                        >
+                          <X size={14} />
+                        </button>
+                        <p className="text-sm font-bold text-slate-800 line-clamp-2 mb-2">{i+1}. {q.q}</p>
+                        <div className="flex gap-1">
+                          {q.options.filter(o => o.trim() !== '').map((_, idx) => (
+                            <div key={idx} className={`h-2 flex-1 rounded-full ${idx === q.correctIndex ? 'bg-emerald-500' : 'bg-slate-200'}`} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      const renderPlay = () => {
+        if (!activeQuiz) return null;
+        const currentQ = activeQuiz.questions[playState.currentIndex];
+        const validOptions = currentQ.options.filter(opt => opt.trim() !== '');
+
+        return (
+          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 animate-in fade-in relative">
+            <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-10">
+              <div className="bg-white/10 backdrop-blur-md text-white px-4 py-2 rounded-xl font-bold text-lg flex items-center gap-2 border border-white/20">
+                <span className="text-white/60">Question</span> {playState.currentIndex + 1} / {activeQuiz.questions.length}
+              </div>
+              <div className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-black text-xl shadow-lg border border-indigo-500">
+                {playState.score} <span className="text-indigo-300 text-sm font-bold">PTS</span>
+              </div>
+            </div>
+
+            <div className="w-full max-w-4xl text-center mb-12 mt-16 px-4">
+              <h2 className="text-4xl md:text-5xl lg:text-6xl font-black text-white leading-tight drop-shadow-lg">
+                {currentQ.q}
+              </h2>
+            </div>
+
+            {playState.isAnswering && (
+              <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 text-5xl md:text-7xl font-black uppercase tracking-widest px-12 py-6 rounded-3xl shadow-2xl backdrop-blur-lg animate-in zoom-in-95 duration-300 ${
+                playState.selectedOption === currentQ.correctIndex 
+                  ? 'bg-emerald-500/90 text-white border-4 border-emerald-300' 
+                  : 'bg-red-500/90 text-white border-4 border-red-300'
+              }`}>
+                {playState.selectedOption === currentQ.correctIndex ? 'Correct!' : 'Incorrect!'}
               </div>
             )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
-  const renderPlay = () => {
-    if (!activeQuiz) return null;
-    const currentQ = activeQuiz.questions[playState.currentIndex];
-    const validOptions = currentQ.options.filter(opt => opt.trim() !== '');
+            <div className={`w-full max-w-5xl grid gap-4 px-2 ${validOptions.length <= 2 ? 'grid-cols-1 md:grid-cols-2 max-w-3xl' : 'grid-cols-1 sm:grid-cols-2'}`}>
+              {currentQ.options.map((opt, idx) => {
+                if (opt.trim() === '') return null;
+                
+                let optionStyles = OPTION_COLORS[idx % OPTION_COLORS.length];
+                let opacity = 'opacity-100';
+                let transform = 'scale-100';
 
-    return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 animate-in fade-in relative">
-        {/* Play Header */}
-        <div className="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-10">
-          <div className="bg-white/10 backdrop-blur-md text-white px-4 py-2 rounded-xl font-bold text-lg flex items-center gap-2 border border-white/20">
-            <span className="text-white/60">Question</span> {playState.currentIndex + 1} / {activeQuiz.questions.length}
-          </div>
-          <div className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-black text-xl shadow-lg border border-indigo-500">
-            {playState.score} <span className="text-indigo-300 text-sm font-bold">PTS</span>
-          </div>
-        </div>
+                if (playState.isAnswering) {
+                  if (idx === currentQ.correctIndex) {
+                    optionStyles = 'bg-emerald-500 ring-8 ring-white/50 z-20';
+                    transform = 'scale-105';
+                  } else if (idx === playState.selectedOption) {
+                    optionStyles = 'bg-red-600';
+                    opacity = 'opacity-80 grayscale';
+                    transform = 'scale-95';
+                  } else {
+                    opacity = 'opacity-30 grayscale';
+                    transform = 'scale-95';
+                  }
+                }
 
-        {/* Question Area */}
-        <div className="w-full max-w-4xl text-center mb-12 mt-16 px-4">
-          <h2 className="text-4xl md:text-5xl lg:text-6xl font-black text-white leading-tight drop-shadow-lg">
-            {currentQ.q}
-          </h2>
-        </div>
-
-        {/* Feedback Banner (Correct/Incorrect) */}
-        {playState.isAnswering && (
-          <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 text-5xl md:text-7xl font-black uppercase tracking-widest px-12 py-6 rounded-3xl shadow-2xl backdrop-blur-lg animate-in zoom-in-50 duration-300 ${
-            playState.selectedOption === currentQ.correctIndex 
-              ? 'bg-emerald-500/90 text-white border-4 border-emerald-300' 
-              : 'bg-red-500/90 text-white border-4 border-red-300'
-          }`}>
-            {playState.selectedOption === currentQ.correctIndex ? 'Correct!' : 'Incorrect!'}
-          </div>
-        )}
-
-        {/* Options Grid */}
-        <div className={`w-full max-w-5xl grid gap-4 px-2 ${validOptions.length <= 2 ? 'grid-cols-1 md:grid-cols-2 max-w-3xl' : 'grid-cols-1 sm:grid-cols-2'}`}>
-          {currentQ.options.map((opt, idx) => {
-            if (opt.trim() === '') return null; // Skip empty options
-            
-            // Determine styles based on state
-            let optionStyles = OPTION_COLORS[idx % OPTION_COLORS.length];
-            let opacity = 'opacity-100';
-            let transform = 'scale-100';
-
-            if (playState.isAnswering) {
-              if (idx === currentQ.correctIndex) {
-                // The correct answer always highlights
-                optionStyles = 'bg-emerald-500 ring-8 ring-white/50 z-20';
-                transform = 'scale-105';
-              } else if (idx === playState.selectedOption) {
-                // Selected but wrong
-                optionStyles = 'bg-red-600';
-                opacity = 'opacity-80 grayscale';
-                transform = 'scale-95';
-              } else {
-                // Not selected, not correct
-                opacity = 'opacity-30 grayscale';
-                transform = 'scale-95';
-              }
-            }
-
-            return (
-              <button
-                key={idx}
-                onClick={() => handleOptionClick(idx)}
-                disabled={playState.isAnswering}
-                className={`
-                  ${optionStyles} ${opacity} ${transform}
-                  min-h-[140px] md:min-h-[180px] w-full rounded-2xl md:rounded-3xl shadow-lg 
-                  text-white text-2xl md:text-3xl font-bold p-6 
-                  flex items-center justify-center text-center
-                  transition-all duration-300 ease-out border-b-8 border-black/20
-                  ${!playState.isAnswering ? 'active:translate-y-2 active:border-b-0' : ''}
-                `}
-              >
-                {opt}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Progress Bar */}
-        <div className="absolute bottom-0 left-0 w-full h-2 bg-slate-800">
-          <div 
-            className="h-full bg-yellow-400 transition-all duration-500 ease-out"
-            style={{ width: `${((playState.currentIndex) / activeQuiz.questions.length) * 100}%` }}
-          />
-        </div>
-      </div>
-    );
-  };
-
-  const renderResults = () => {
-    const totalQuestions = activeQuiz.questions.length;
-    const maxScore = totalQuestions * 100;
-    const percentage = Math.round((playState.score / maxScore) * 100);
-    
-    let message = "Good effort!";
-    if (percentage === 100) message = "Perfect Score!";
-    else if (percentage >= 80) message = "Excellent Job!";
-    else if (percentage >= 60) message = "Well Done!";
-
-    return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in-95">
-        <div className="w-full max-w-lg bg-white rounded-[3rem] p-10 text-center shadow-2xl relative overflow-hidden">
-          {/* Confetti-like decoration */}
-          <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-br from-yellow-400 to-amber-500 -z-0"></div>
-          
-          <div className="relative z-10">
-            <div className="bg-white w-24 h-24 rounded-full mx-auto flex items-center justify-center shadow-xl mb-6 text-amber-500 border-4 border-slate-50">
-              <Trophy size={48} />
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => handleOptionClick(idx)}
+                    disabled={playState.isAnswering}
+                    className={`
+                      ${optionStyles} ${opacity} ${transform}
+                      min-h-[140px] md:min-h-[180px] w-full rounded-2xl md:rounded-3xl shadow-lg 
+                      text-white text-2xl md:text-3xl font-bold p-6 
+                      flex items-center justify-center text-center
+                      transition-all duration-300 ease-out border-b-8 border-black/20
+                      ${!playState.isAnswering ? 'active:translate-y-2 active:border-b-0' : ''}
+                    `}
+                  >
+                    {opt}
+                  </button>
+                );
+              })}
             </div>
-            
-            <h1 className="text-4xl font-black text-slate-800 mb-2">{message}</h1>
-            <p className="text-slate-500 font-medium mb-8 text-lg">{activeQuiz.title}</p>
 
-            <div className="bg-slate-50 rounded-3xl p-6 mb-8 border border-slate-100">
-              <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Total Score</div>
-              <div className="text-6xl font-black text-indigo-600 mb-4">{playState.score}</div>
+            <div className="absolute bottom-0 left-0 w-full h-2 bg-slate-800">
+              <div 
+                className="h-full bg-yellow-400 transition-all duration-500 ease-out"
+                style={{ width: `${((playState.currentIndex) / activeQuiz.questions.length) * 100}%` }}
+              />
+            </div>
+          </div>
+        );
+      };
+
+      const renderResults = () => {
+        const totalQuestions = activeQuiz.questions.length;
+        const maxScore = totalQuestions * 100;
+        const percentage = Math.round((playState.score / maxScore) * 100);
+        
+        let message = "Good effort!";
+        if (percentage === 100) message = "Perfect Score!";
+        else if (percentage >= 80) message = "Excellent Job!";
+        else if (percentage >= 60) message = "Well Done!";
+
+        return (
+          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in-95">
+            <div className="w-full max-w-lg bg-white rounded-[3rem] p-10 text-center shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-br from-yellow-400 to-amber-500 -z-0"></div>
               
-              <div className="flex justify-center gap-8 border-t border-slate-200 pt-4">
-                <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase">Accuracy</div>
-                  <div className="text-xl font-bold text-slate-700">{percentage}%</div>
+              <div className="relative z-10">
+                <div className="bg-white w-24 h-24 rounded-full mx-auto flex items-center justify-center shadow-xl mb-6 text-amber-500 border-4 border-slate-50">
+                  <Trophy size={48} />
                 </div>
-                <div>
-                  <div className="text-xs font-bold text-slate-400 uppercase">Correct</div>
-                  <div className="text-xl font-bold text-emerald-500">{playState.score / 100} / {totalQuestions}</div>
+                
+                <h1 className="text-4xl font-black text-slate-800 mb-2">{message}</h1>
+                <p className="text-slate-500 font-medium mb-8 text-lg">{activeQuiz.title}</p>
+
+                <div className="bg-slate-50 rounded-3xl p-6 mb-8 border border-slate-100">
+                  <div className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Total Score</div>
+                  <div className="text-6xl font-black text-indigo-600 mb-4">{playState.score}</div>
+                  
+                  <div className="flex justify-center gap-8 border-t border-slate-200 pt-4">
+                    <div>
+                      <div className="text-xs font-bold text-slate-400 uppercase">Accuracy</div>
+                      <div className="text-xl font-bold text-slate-700">{percentage}%</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-slate-400 uppercase">Correct</div>
+                      <div className="text-xl font-bold text-emerald-500">{playState.score / 100} / {totalQuestions}</div>
+                    </div>
+                  </div>
                 </div>
+
+                <button 
+                  onClick={() => {
+                    setView('home');
+                    setActiveQuiz(null);
+                  }}
+                  className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg"
+                >
+                  <Home size={20} /> Return Home
+                </button>
               </div>
             </div>
-
-            <button 
-              onClick={() => {
-                setView('home');
-                setActiveQuiz(null);
-              }}
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg"
-            >
-              <Home size={20} /> Return Home
-            </button>
           </div>
+        );
+      };
+
+      if (authError) {
+        return (
+          <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center font-sans">
+            <div className="bg-white p-8 rounded-3xl shadow-xl max-w-lg border-2 border-red-100">
+              <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertCircle size={40} />
+              </div>
+              <h1 className="text-2xl font-black text-slate-800 mb-4">Firebase Setup Required</h1>
+              <p className="text-slate-600 mb-6 font-medium">{authError}</p>
+              <div className="bg-slate-100 p-5 rounded-xl text-left text-sm text-slate-700 font-mono space-y-2">
+                <p>1. Go to console.firebase.google.com</p>
+                <p>2. Select project <b>freequizz-4789e</b></p>
+                <p>3. Go to <b>Authentication</b> &rarr; <b>Sign-in method</b></p>
+                <p>4. Enable the <b>Anonymous</b> provider</p>
+                <p>5. Refresh this page</p>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-slate-50 font-sans selection:bg-indigo-200 text-slate-900 flex flex-col">
+          {view !== 'play' && view !== 'results' && renderNavbar()}
+          
+          <main className="flex-1">
+            {view === 'home' && renderHome()}
+            {view === 'library' && renderLibrary()}
+            {view === 'create' && renderCreate()}
+            {view === 'play' && renderPlay()}
+            {view === 'results' && renderResults()}
+          </main>
         </div>
-      </div>
-    );
-  };
+      );
+    }
 
-  // --- MAIN RENDER ---
-  if (authError) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center font-sans">
-        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-lg border-2 border-red-100">
-          <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
-            <AlertCircle size={40} />
-          </div>
-          <h1 className="text-2xl font-black text-slate-800 mb-4">Firebase Setup Required</h1>
-          <p className="text-slate-600 mb-6 font-medium">{authError}</p>
-          <div className="bg-slate-100 p-5 rounded-xl text-left text-sm text-slate-700 font-mono space-y-2">
-            <p>1. Go to console.firebase.google.com</p>
-            <p>2. Select project <b>freequizz-4789e</b></p>
-            <p>3. Go to <b>Authentication</b> &rarr; <b>Sign-in method</b></p>
-            <p>4. Enable the <b>Anonymous</b> provider</p>
-            <p>5. Refresh this page</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-50 font-sans selection:bg-indigo-200 text-slate-900 flex flex-col">
-      {/* Hide Navbar during active play or results for immersive experience */}
-      {view !== 'play' && view !== 'results' && renderNavbar()}
-      
-      <main className="flex-1">
-        {view === 'home' && renderHome()}
-        {view === 'library' && renderLibrary()}
-        {view === 'create' && renderCreate()}
-        {view === 'play' && renderPlay()}
-        {view === 'results' && renderResults()}
-      </main>
-    </div>
-  );
-}
+    // Mount the Application
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
