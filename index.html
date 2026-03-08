@@ -139,7 +139,11 @@
             try {
               await signInAnonymously(auth);
             } catch (err) {
-              setJoinError('Auth failed: ' + err.message);
+              if (err.code === 'auth/unauthorized-domain') {
+                setJoinError(`Domain blocked! Add '${window.location.hostname}' to Firebase Authorized Domains.`);
+              } else {
+                setJoinError('Auth failed: ' + err.message);
+              }
               return;
             }
           }
@@ -243,7 +247,11 @@
           }
           setView('home');
         } catch (err) {
-          setAuthFormError(err.message);
+          if (err.code === 'auth/unauthorized-domain') {
+            setAuthFormError(`Domain blocked! Add '${window.location.hostname}' to Firebase Authorized Domains.`);
+          } else {
+            setAuthFormError(err.message);
+          }
         }
       };
 
@@ -254,7 +262,11 @@
           await signInWithPopup(auth, provider);
           setView('home');
         } catch (err) {
-          setAuthFormError(err.message);
+          if (err.code === 'auth/unauthorized-domain') {
+            setAuthFormError(`Domain Blocked! Go to Firebase Console > Authentication > Settings > Authorized domains and add: ${window.location.hostname}`);
+          } else {
+            setAuthFormError(err.message);
+          }
         }
       };
 
@@ -405,7 +417,8 @@
 
             {authFormError && (
               <div className="bg-red-50 text-red-600 p-3 rounded-xl mb-6 text-sm font-semibold flex items-center gap-2">
-                <AlertCircle size={16} /> {authFormError}
+                <AlertCircle size={20} className="flex-shrink-0" /> 
+                <span className="leading-tight">{authFormError}</span>
               </div>
             )}
 
