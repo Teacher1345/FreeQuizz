@@ -5,7 +5,7 @@ import {
   ChevronRight, AlertCircle, Library, Loader2
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, doc } from 'firebase/firestore';
 
 // Firebase Setup
@@ -35,22 +35,33 @@ export default function App() {
   const [view, setView] = useState('home'); // home, create, library, play, results
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState('');
 
   // Firebase Auth & Data Sync
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
+        // We bypass the platform token and go straight to anonymous 
+        // because you are using a custom Firebase config.
+        await signInAnonymously(auth);
       } catch (error) {
         console.error("Auth error:", error);
+        if (error.code === 'auth/admin-restricted-operation' || error.code === 'auth/operation-not-allowed') {
+          setAuthError("You need to enable 'Anonymous' sign-in in your Firebase Console.");
+        } else {
+          setAuthError(`Authentication Failed: ${error.message}`);
+        }
+        setLoading(false); 
       }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
+    
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (!currentUser) {
+        setLoading(false);
+      }
+    });
     return () => unsubscribe();
   }, []);
 
@@ -63,6 +74,9 @@ export default function App() {
       setLoading(false);
     }, (error) => {
       console.error("Firestore error:", error);
+      if (error.code === 'permission-denied') {
+        setAuthError("Firestore Action Required: Please update your Firestore Security Rules to allow read/write access.");
+      }
       setLoading(false);
     });
     return () => unsubscribe();
@@ -158,7 +172,7 @@ export default function App() {
     setCreateError('');
     if (!newQuizTitle.trim()) return setCreateError("Quiz title is required.");
     if (newQuestions.length === 0) return setCreateError("Add at least one question.");
-    if (!user) return setCreateError("You must be connected to save a quiz.");
+    if (!user) return setCreateError("You must be connected to save a quiz. Ensure Firebase Anonymous Auth is enabled.");
 
     const newQuiz = {
       code: Math.floor(100000 + Math.random() * 900000).toString(),
@@ -176,7 +190,7 @@ export default function App() {
       setView('library');
     } catch (error) {
       console.error("Error saving:", error);
-      setCreateError("Failed to save assessment.");
+      setCreateError("Failed to save assessment. Check Firestore rules.");
     }
   };
 
@@ -620,6 +634,27 @@ export default function App() {
   };
 
   // --- MAIN RENDER ---
+  if (authError) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center font-sans">
+        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-lg border-2 border-red-100">
+          <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertCircle size={40} />
+          </div>
+          <h1 className="text-2xl font-black text-slate-800 mb-4">Firebase Setup Required</h1>
+          <p className="text-slate-600 mb-6 font-medium">{authError}</p>
+          <div className="bg-slate-100 p-5 rounded-xl text-left text-sm text-slate-700 font-mono space-y-2">
+            <p>1. Go to console.firebase.google.com</p>
+            <p>2. Select project <b>freequizz-4789e</b></p>
+            <p>3. Go to <b>Authentication</b> &rarr; <b>Sign-in method</b></p>
+            <p>4. Enable the <b>Anonymous</b> provider</p>
+            <p>5. Refresh this page</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans selection:bg-indigo-200 text-slate-900 flex flex-col">
       {/* Hide Navbar during active play or results for immersive experience */}
